@@ -1,0 +1,622 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find the Needle 3D 🌾</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;font-family:Arial,sans-serif;background:#87ceeb;color:white}
+#hud{position:fixed;top:10px;left:10px;z-index:5;display:flex;gap:6px;flex-wrap:wrap}
+.stat{background:#17271fee;padding:9px;border-radius:9px;font-weight:bold;font-size:13px}
+#shop{position:fixed;top:10px;right:10px;width:215px;max-height:90vh;overflow:auto;z-index:6;background:#17271fee;border-radius:12px;padding:10px}
+#shop h3{margin:6px 0;color:#ffe477}
+button{border:0;border-radius:7px;padding:9px;background:#ffd34f;color:#241c08;font-weight:bold;cursor:pointer}
+#shop button{width:100%;margin:3px 0;font-size:12px}
+input{width:100%;padding:8px;border-radius:7px;border:0;margin:3px 0}
+hr{border-color:#ffffff35}
+#help{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:#17271fee;padding:10px;border-radius:9px;text-align:center;z-index:5;font-size:12px;width:max-content;max-width:95%}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;font-size:25px;pointer-events:none;text-shadow:0 0 4px black}
+#message{position:fixed;top:85px;left:50%;transform:translateX(-50%);z-index:12;display:none;background:#17271fee;padding:12px;border-radius:9px;text-align:center;max-width:90%}
+#intro{position:fixed;inset:0;background:#071c24ee;display:flex;align-items:center;justify-content:center;z-index:20;padding:15px}
+.panel{background:#203b30;padding:25px;border-radius:18px;text-align:center;max-width:520px;border:1px solid #ffffff45}
+.panel h1{color:#ffe477}
+#roomStatus{font-size:11px;overflow-wrap:anywhere}
+@media(max-width:650px){
+ #shop{width:155px;top:auto;bottom:65px;max-height:55vh}
+ #shop button{font-size:10px;padding:7px 3px}
+ .stat{font-size:10px;padding:6px}
+ #help{font-size:10px}
+}
+</style>
+</head>
+<body>
+<div id="hud">
+ <div class="stat">🌾 Saman: <span id="hay">0</span></div>
+ <div class="stat">💰 Para: <span id="money">0</span>₺</div>
+ <div class="stat">💣 Bomba: <span id="bombs">0</span></div>
+ <div class="stat">📖 Bölüm: <span id="chapter">1</span></div>
+ <div class="stat">⚡ Hız: 2×</div>
+</div>
+<div id="crosshair">＋</div>
+<div id="message"></div>
+
+<div id="shop">
+ <h3>🛒 MARKET</h3>
+ <b>🪚 Tırmık</b>
+ <button id="buyRake">Tırmık satın al — 150₺</button>
+ <button id="upgradeRake">Tırmık yükselt — 100₺</button>
+ <div id="rakeInfo">Tırmık: Yok</div>
+ <hr>
+ <b>💣 El bombası</b>
+ <button id="buyBomb">Bomba al — 75₺</button>
+ <button id="upgradeBomb">Bomba yükselt — 150₺</button>
+ <div id="bombInfo">500 saman</div>
+ <hr>
+ <button id="sellUpgrade">Satış yükselt — 100₺</button>
+ <button id="reachUpgrade">Toplama menzili — 80₺</button>
+ <hr>
+ <h3>🌐 Çevrimiçi oda</h3>
+ <input id="roomCode" placeholder="Oda kodu">
+ <button id="createRoom">Oda kur</button>
+ <button id="joinRoom">Odaya katıl</button>
+ <div id="roomStatus">Bağlantı yok.</div>
+</div>
+
+<div id="help">WASD: Hareket · Fare: Bakış · Sol tık: Topla · G: Bomba · E: Çiftçi</div>
+
+<div id="intro">
+ <div class="panel">
+  <h1>🌾 FIND THE NEEDLE 3D</h1>
+  <p>🌾 Büyük samanlığın içinde gizli iğneyi bul!</p>
+  <p>🌈 Rainbow saman = 100₺</p>
+  <p>🪚 Tırmık = 12 saman · 💣 Bomba = 500 saman</p>
+  <p>Normal samanlarını çiftçiye sat.</p>
+  <button id="start" style="font-size:20px;padding:14px 28px">OYUNA BAŞLA ▶</button>
+ </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(()=>{
+"use strict";
+const $=id=>document.getElementById(id);
+if(!window.THREE){
+ $("message").style.display="block";
+ $("message").textContent="Three.js yüklenemedi. İnternet bağlantını kontrol et.";
+ return;
+}
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x8bd4ff);
+scene.fog=new THREE.Fog(0x8bd4ff,45,110);
+
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,180);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x596b37,2));
+const sun=new THREE.DirectionalLight(0xfff0ce,2);
+sun.position.set(-15,28,15);
+scene.add(sun);
+
+const ground=new THREE.Mesh(
+ new THREE.PlaneGeometry(180,180),
+ new THREE.MeshStandardMaterial({color:0x559343})
+);
+ground.rotation.x=-Math.PI/2;
+ground.position.y=-.1;
+scene.add(ground);
+
+function makeBox(x,y,z,sx,sy,sz,col){
+ const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),
+  new THREE.MeshStandardMaterial({color:col}));
+ m.position.set(x,y,z);m.castShadow=true;scene.add(m);return m;
+}
+function makeTree(x,z){
+ const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.16,.25,2,7),
+  new THREE.MeshStandardMaterial({color:0x744522}));
+ trunk.position.set(x,1,z);scene.add(trunk);
+ const leaves=new THREE.Mesh(new THREE.SphereGeometry(1.1,8,7),
+  new THREE.MeshStandardMaterial({color:0x287b3b}));
+ leaves.position.set(x,2.5,z);scene.add(leaves);
+}
+for(let i=0;i<30;i++){
+ const a=Math.random()*Math.PI*2,r=15+Math.random()*28;
+ makeTree(Math.cos(a)*r,Math.sin(a)*r);
+}
+
+// Çiftçi evi
+makeBox(7,1.4,12,4,2.8,3.5,0xb97943);
+makeBox(7,3.05,12,4.7,.55,4.2,0x9c3728);
+
+const farmer=new THREE.Group();
+const body=new THREE.Mesh(new THREE.CylinderGeometry(.38,.46,1.1,10),
+ new THREE.MeshStandardMaterial({color:0x3678d0}));
+body.position.y=1.05;farmer.add(body);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.34,12,10),
+ new THREE.MeshStandardMaterial({color:0xf0bf8a}));
+head.position.y=1.8;farmer.add(head);
+const hat=new THREE.Mesh(new THREE.CylinderGeometry(.46,.46,.12,12),
+ new THREE.MeshStandardMaterial({color:0xd5a33c}));
+hat.position.y=2.13;farmer.add(hat);
+farmer.position.set(4,0,9);scene.add(farmer);
+
+const player={x:0,z:13,yaw:0,pitch:0};
+const BASE_SPEED=9;
+let started=false,hayCount=0,money=0,chapter=1;
+let rakeLevel=0,bombCount=0,bombLevel=1,sellLevel=1,reachLevel=1;
+const keys={};
+const dummy=new THREE.Object3D();
+const raycaster=new THREE.Raycaster();
+let cells=[],stalkMeta=[],hayMesh=null,needleCell=null,needleObject=null;
+let needleRevealed=false,needleCarried=false,buildToken=0;
+let lastMessage=0;
+
+function say(t,ms=2600){
+ $("message").textContent=t;
+ $("message").style.display="block";
+ lastMessage=performance.now()+ms;
+}
+function updateHUD(){
+ $("hay").textContent=hayCount;
+ $("money").textContent=money;
+ $("bombs").textContent=bombCount;
+ $("chapter").textContent=chapter;
+ $("rakeInfo").textContent=rakeLevel===0?"Tırmık: Yok":`Seviye ${rakeLevel}: ${12*rakeLevel} saman`;
+ $("bombInfo").textContent=`Seviye ${bombLevel}: ${500*bombLevel} saman`;
+ $("buyRake").textContent=rakeLevel===0?"Tırmık satın al — 150₺":"Tırmık satın alındı";
+ $("upgradeRake").textContent=`Tırmık yükselt — ${rakeLevel===0?100:100*rakeLevel}₺`;
+ $("upgradeBomb").textContent=`Bomba yükselt — ${150*bombLevel}₺`;
+ $("sellUpgrade").textContent=`Satış yükselt — ${100*sellLevel}₺`;
+ $("reachUpgrade").textContent=`Toplama menzili — ${80*reachLevel}₺`;
+}
+updateHUD();
+
+needleObject=new THREE.Group();
+const needleShaft=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,.62,8),
+ new THREE.MeshStandardMaterial({color:0xe2eaf1,metalness:.8,roughness:.2}));
+needleShaft.rotation.z=Math.PI/2;
+needleObject.add(needleShaft);
+const needleEye=new THREE.Mesh(new THREE.TorusGeometry(.075,.018,6,12),
+ new THREE.MeshStandardMaterial({color:0xe2eaf1,metalness:.8}));
+needleEye.position.x=-.32;needleObject.add(needleEye);
+needleObject.visible=false;scene.add(needleObject);
+
+// Samanlık oluşturma
+const PILE_RADIUS=7.2;
+const CELL_SPACING=.23;
+const STALKS_PER_CELL=22;
+const strawGeometry=new THREE.CylinderGeometry(.043,.052,.82,5);
+strawGeometry.translate(0,.41,0);
+const strawMaterial=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.9});
+
+function clearPile(){
+ buildToken++;
+ if(hayMesh){scene.remove(hayMesh);hayMesh.dispose?.();}
+ cells=[];stalkMeta=[];hayMesh=null;
+ needleRevealed=false;needleCarried=false;
+ needleObject.visible=false;
+}
+
+function buildPile(){
+ clearPile();
+ const token=buildToken;
+
+ for(let x=-PILE_RADIUS;x<=PILE_RADIUS;x+=CELL_SPACING){
+  for(let z=-PILE_RADIUS;z<=PILE_RADIUS;z+=CELL_SPACING){
+   const r=Math.hypot(x,z);
+   if(r>PILE_RADIUS)continue;
+   cells.push({
+    x,z,
+    y:.95*Math.sqrt(Math.max(0,1-(r/PILE_RADIUS)**2)),
+    remaining:STALKS_PER_CELL,
+    ids:[]
+   });
+  }
+ }
+ needleCell=cells[Math.floor(Math.random()*cells.length)];
+
+ const maxStalks=cells.length*STALKS_PER_CELL;
+ hayMesh=new THREE.InstancedMesh(strawGeometry,strawMaterial,maxStalks);
+ hayMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+ // ÖNEMLİ: mesh oluşturulurken tüm samanlar görünür kapasiteye ayarlanıyor.
+ hayMesh.count=maxStalks;
+ hayMesh.frustumCulled=false;
+ scene.add(hayMesh);
+
+ let ci=0,si=0;
+ function chunk(){
+  if(token!==buildToken)return;
+  let made=0;
+
+  while(ci<cells.length&&made<40){
+   const c=cells[ci];
+   while(si<STALKS_PER_CELL){
+    const id=ci*STALKS_PER_CELL+si;
+    const px=c.x+(Math.random()-.5)*CELL_SPACING*.96;
+    const pz=c.z+(Math.random()-.5)*CELL_SPACING*.96;
+    const py=c.y+(Math.random()-.5)*.045;
+    const height=.72+Math.random()*.25;
+
+    dummy.position.set(px,py,pz);
+    dummy.rotation.set((Math.random()-.5)*.12,Math.random()*Math.PI,(Math.random()-.5)*.12);
+    dummy.scale.set(1,height/.82,1);
+    dummy.updateMatrix();
+    hayMesh.setMatrixAt(id,dummy.matrix);
+
+    const rainbow=Math.random()<.13;
+    const col=new THREE.Color();
+    if(rainbow)col.setHSL(Math.random(),.98,.58);
+    else col.setHSL(.105+Math.random()*.025,.85,.49+Math.random()*.12);
+    hayMesh.setColorAt(id,col);
+
+    stalkMeta[id]={cell:c,removed:false,rainbow,x:px,z:pz};
+    c.ids.push(id);
+    si++;made++;
+   }
+   ci++;si=0;
+  }
+
+  // Yalnızca oluşturulmuş samanları etkinleştir; tamamlanınca tümü görünür.
+  const builtCount=ci*STALKS_PER_CELL+si;
+  hayMesh.count=Math.min(maxStalks,builtCount);
+  hayMesh.instanceMatrix.needsUpdate=true;
+  if(hayMesh.instanceColor)hayMesh.instanceColor.needsUpdate=true;
+
+  if(ci<cells.length){
+   requestAnimationFrame(chunk);
+  }else{
+   hayMesh.count=maxStalks;
+   hayMesh.instanceMatrix.needsUpdate=true;
+   if(hayMesh.instanceColor)hayMesh.instanceColor.needsUpdate=true;
+   hayMesh.computeBoundingSphere();
+   say(`🌾 ${chapter}. bölümün samanlığı hazır!`,3000);
+  }
+ }
+ chunk();
+}
+
+function removeStalk(id){
+ const m=stalkMeta[id];
+ if(!m||m.removed)return false;
+ m.removed=true;
+ dummy.position.set(m.x,-100,m.z);
+ dummy.rotation.set(0,0,0);
+ dummy.scale.set(0,0,0);
+ dummy.updateMatrix();
+ hayMesh.setMatrixAt(id,dummy.matrix);
+ m.cell.remaining--;
+ if(m.rainbow)money+=100;
+ else hayCount++;
+
+ if(m.cell===needleCell&&m.cell.remaining===0&&!needleRevealed){
+  needleRevealed=true;
+  needleObject.position.set(m.cell.x,m.cell.y+.18,m.cell.z);
+  needleObject.visible=true;
+ }
+ return true;
+}
+
+function removeMany(amount,range,x,z){
+ const list=[];
+ for(let i=0;i<stalkMeta.length;i++){
+  const m=stalkMeta[i];
+  if(!m||m.removed)continue;
+  const d=Math.hypot(m.x-x,m.z-z);
+  if(d<=range)list.push({id:i,d});
+ }
+ list.sort((a,b)=>a.d-b.d);
+
+ let total=0,rainbow=0,normal=0;
+ for(const item of list){
+  if(total>=amount)break;
+  const m=stalkMeta[item.id];
+  if(removeStalk(item.id)){
+   total++;
+   if(m.rainbow)rainbow++;else normal++;
+  }
+ }
+
+ if(hayMesh){
+  hayMesh.instanceMatrix.needsUpdate=true;
+  hayMesh.computeBoundingSphere();
+ }
+ updateHUD();
+ return {total,rainbow,normal};
+}
+function showCollection(r,label){
+ if(!r.total){say("Bu bölgede toplanacak saman kalmadı!");return;}
+ say(`${label}: ${r.total} saman! 🌈 ${r.rainbow} rainbow = +${r.rainbow*100}₺`,3200);
+}
+
+// Tırmık görünümü
+const rake=new THREE.Group();
+const rakeHandle=new THREE.Mesh(new THREE.CylinderGeometry(.035,.045,1.15,6),
+ new THREE.MeshStandardMaterial({color:0x80502b}));
+rakeHandle.rotation.z=-.65;rakeHandle.position.set(.25,-.2,-.6);rake.add(rakeHandle);
+const rakeHead=new THREE.Mesh(new THREE.BoxGeometry(.75,.09,.1),
+ new THREE.MeshStandardMaterial({color:0x89949c,metalness:.6}));
+rakeHead.position.set(.55,.1,-.75);rake.add(rakeHead);
+for(let i=0;i<7;i++){
+ const tooth=new THREE.Mesh(new THREE.BoxGeometry(.045,.28,.06),
+  new THREE.MeshStandardMaterial({color:0xc4d0d5,metalness:.5}));
+ tooth.position.set(.22+i*.11,-.04,-.75);rake.add(tooth);
+}
+camera.add(rake);scene.add(camera);rake.visible=false;
+
+function makeBomb(){
+ const g=new THREE.Group();
+ const ball=new THREE.Mesh(new THREE.SphereGeometry(.16,12,10),
+  new THREE.MeshStandardMaterial({color:0x252b2d}));
+ g.add(ball);
+ const fuse=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,.12,6),
+  new THREE.MeshStandardMaterial({color:0xe4b93b}));
+ fuse.position.y=.17;g.add(fuse);
+ return g;
+}
+const activeBombs=[],explosions=[];
+function makeExplosion(x,y,z){
+ const m=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),
+  new THREE.MeshBasicMaterial({color:0xffb52e,transparent:true,opacity:.7,wireframe:true}));
+ m.position.set(x,y,z);scene.add(m);explosions.push({mesh:m,age:0});
+}
+
+function tryCollect(){
+ if(!started||!hayMesh)return;
+ raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
+ raycaster.far=5+(reachLevel-1)*2;
+ const targets=[hayMesh];
+ if(needleObject.visible)targets.push(needleObject);
+ const hits=raycaster.intersectObjects(targets,true);
+ if(!hits.length)return;
+ const hit=hits[0];
+
+ if(needleObject.visible&&(hit.object===needleObject||needleObject.children.includes(hit.object))){
+  if(Math.hypot(player.x-needleObject.position.x,player.z-needleObject.position.z)>3){
+   say("İğneye yaklaşmalısın!");return;
+  }
+  needleCarried=true;needleObject.visible=false;
+  say("🪡 İğneyi buldun! Çiftçiye git ve E tuşuna bas.",4000);
+  return;
+ }
+
+ if(hit.object===hayMesh&&Number.isInteger(hit.instanceId)){
+  const m=stalkMeta[hit.instanceId];
+  if(!m||m.removed)return;
+  if(rakeLevel>0){
+   const result=removeMany(12*rakeLevel,1.8,m.x,m.z);
+   showCollection(result,"🪚 Tırmık");
+  }else{
+   const result=removeMany(1,1,m.x,m.z);
+   showCollection(result,"🌾 Toplandı");
+  }
+ }
+}
+
+function throwBomb(){
+ if(!started)return;
+ if(bombCount<=0){say("Bomba yok! Marketten satın al.");return;}
+ bombCount--;updateHUD();
+ const dir=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
+ const mesh=makeBomb();
+ mesh.position.set(player.x,1.3,player.z);scene.add(mesh);
+ const velocity=dir.multiplyScalar(11);velocity.y=5;
+ activeBombs.push({mesh,velocity,age:0});
+ say("💣 Bomba atıldı!");
+}
+
+function getGroundHeight(x,z){
+ let best=null,bestD=Infinity;
+ for(const c of cells){
+  const d=(x-c.x)**2+(z-c.z)**2;
+  if(d<bestD){bestD=d;best=c;}
+ }
+ if(best&&best.remaining>0&&bestD<CELL_SPACING*CELL_SPACING*1.8)return best.y+.35;
+ return 0;
+}
+function nearFarmer(){
+ return Math.hypot(player.x-farmer.position.x,player.z-farmer.position.z)<3;
+}
+function interactFarmer(){
+ if(!started)return;
+ if(!nearFarmer()){say("Çiftçiye yaklaşmalısın!");return;}
+ if(needleCarried){
+  needleCarried=false;chapter++;
+  if(chapter===2||chapter===3){
+   money=0;hayCount=0;rakeLevel=0;bombCount=0;
+   bombLevel=1;sellLevel=1;reachLevel=1;
+   rake.visible=false;
+   say(`🎉 Bölüm ${chapter}! Envanter ve yükseltmeler sıfırlandı.`,4000);
+  }else{
+   money+=250;say(`🎉 Bölüm ${chapter}! +250₺`,3000);
+  }
+  updateHUD();player.x=0;player.z=13;buildPile();return;
+ }
+ if(hayCount>0){
+  const earned=hayCount*sellLevel;
+  money+=earned;
+  say(`${hayCount} normal saman satıldı! +${earned}₺`);
+  hayCount=0;updateHUD();
+ }else say("İğneyi bul ve bana getir!");
+}
+
+$("buyRake").onclick=()=>{
+ if(rakeLevel){say("Tırmığın zaten var!");return;}
+ if(money<150){say("Tırmık için 150₺ gerekiyor.");return;}
+ money-=150;rakeLevel=1;rake.visible=true;updateHUD();
+ say("🪚 Tırmık alındı! Sol tıkla 12 saman topla.");
+};
+$("upgradeRake").onclick=()=>{
+ if(!rakeLevel){say("Önce tırmık satın al!");return;}
+ const cost=100*rakeLevel;
+ if(money<cost){say(`${cost}₺ gerekiyor.`);return;}
+ money-=cost;rakeLevel++;updateHUD();
+ say(`Tırmık seviyesi ${rakeLevel}: ${12*rakeLevel} saman toplar.`);
+};
+$("buyBomb").onclick=()=>{
+ if(money<75){say("Bomba için 75₺ gerekiyor.");return;}
+ money-=75;bombCount++;updateHUD();say("💣 Bomba alındı! G tuşuyla at.");
+};
+$("upgradeBomb").onclick=()=>{
+ const cost=150*bombLevel;
+ if(money<cost){say(`${cost}₺ gerekiyor.`);return;}
+ money-=cost;bombLevel++;updateHUD();
+ say(`Bomba seviyesi ${bombLevel}: ${500*bombLevel} saman toplar.`);
+};
+$("sellUpgrade").onclick=()=>{
+ const cost=100*sellLevel;
+ if(money<cost){say(`${cost}₺ gerekiyor.`);return;}
+ money-=cost;sellLevel++;updateHUD();say("Saman satış kazancı yükseltildi.");
+};
+$("reachUpgrade").onclick=()=>{
+ const cost=80*reachLevel;
+ if(money<cost){say(`${cost}₺ gerekiyor.`);return;}
+ money-=cost;reachLevel++;updateHUD();say("Toplama menzili artırıldı.");
+};
+
+document.addEventListener("keydown",e=>{
+ if(e.repeat)return;
+ keys[e.code]=true;
+ if(e.code==="KeyE")interactFarmer();
+ if(e.code==="KeyG")throwBomb();
+});
+document.addEventListener("keyup",e=>keys[e.code]=false);
+document.addEventListener("mousemove",e=>{
+ if(!started||document.pointerLockElement!==renderer.domElement)return;
+ player.yaw-=e.movementX*.0022;
+ player.pitch-=e.movementY*.002;
+ player.pitch=Math.max(-1.2,Math.min(1.2,player.pitch));
+});
+renderer.domElement.addEventListener("click",()=>{
+ if(started&&document.pointerLockElement!==renderer.domElement)
+  renderer.domElement.requestPointerLock?.();
+});
+document.addEventListener("mousedown",e=>{
+ if(e.button===0&&started&&document.pointerLockElement===renderer.domElement)tryCollect();
+});
+
+$("start").onclick=()=>{
+ started=true;$("intro").style.display="none";
+ buildPile();
+ renderer.domElement.requestPointerLock?.();
+ say("🌾 Samanlık oluşturuluyor...",2500);
+};
+
+// Basit çevrimiçi oyuncu konum paylaşımı
+let peer=null,connection=null,remotePlayer=null,sendTimer=0;
+function makeRemote(){
+ if(remotePlayer)return;
+ remotePlayer=new THREE.Group();
+ const b=new THREE.Mesh(new THREE.CylinderGeometry(.34,.42,1,8),
+  new THREE.MeshStandardMaterial({color:0x45d8ff}));
+ b.position.y=1.05;remotePlayer.add(b);
+ const h=new THREE.Mesh(new THREE.SphereGeometry(.32,10,8),
+  new THREE.MeshStandardMaterial({color:0xffd0a0}));
+ h.position.y=1.78;remotePlayer.add(h);
+ scene.add(remotePlayer);remotePlayer.visible=false;
+}
+function setupConnection(c){
+ connection=c;
+ c.on("open",()=>{$("roomStatus").textContent="Bağlandın!";makeRemote();say("Çevrimiçi odaya bağlandın!");});
+ c.on("data",d=>{
+  if(!d||d.type!=="state")return;
+  makeRemote();remotePlayer.visible=true;
+  remotePlayer.position.set(d.x,0,d.z);
+ });
+ c.on("close",()=>{if(remotePlayer)remotePlayer.visible=false;$("roomStatus").textContent="Bağlantı kapandı.";});
+}
+$("createRoom").onclick=()=>{
+ if(!window.Peer){say("Oda için internet gerekiyor.");return;}
+ if(peer)peer.destroy();
+ const code=Math.random().toString(36).slice(2,8).toUpperCase();
+ $("roomCode").value=code;$("roomStatus").textContent="Oda kuruluyor...";
+ peer=new Peer("needle-"+code);
+ peer.on("open",()=>{$("roomStatus").textContent="Oda kodun: "+code;say("Arkadaşına bu kodu ver: "+code,5000);});
+ peer.on("connection",setupConnection);
+ peer.on("error",e=>$("roomStatus").textContent="Oda hatası: "+e.type);
+};
+$("joinRoom").onclick=()=>{
+ if(!window.Peer){say("Oda için internet gerekiyor.");return;}
+ const code=$("roomCode").value.trim().toUpperCase();
+ if(!code){say("Oda kodunu yaz!");return;}
+ if(peer)peer.destroy();
+ $("roomStatus").textContent="Bağlanıyor...";
+ peer=new Peer();
+ peer.on("open",()=>setupConnection(peer.connect("needle-"+code)));
+ peer.on("error",e=>$("roomStatus").textContent="Bağlantı hatası: "+e.type);
+};
+
+let previous=performance.now();
+function animate(now){
+ requestAnimationFrame(animate);
+ const dt=Math.min((now-previous)/1000,.04);previous=now;
+
+ if(started&&document.pointerLockElement===renderer.domElement){
+  const f=(keys.KeyW?1:0)-(keys.KeyS?1:0);
+  const s=(keys.KeyD?1:0)-(keys.KeyA?1:0);
+  const fx=-Math.sin(player.yaw),fz=-Math.cos(player.yaw);
+  const rx=Math.cos(player.yaw),rz=-Math.sin(player.yaw);
+  let dx=fx*f+rx*s,dz=fz*f+rz*s;
+  const l=Math.hypot(dx,dz);
+  if(l){dx/=l;dz/=l;}
+  player.x+=dx*BASE_SPEED*dt;
+  player.z+=dz*BASE_SPEED*dt;
+  const floor=getGroundHeight(player.x,player.z);
+  camera.position.set(player.x,floor+1.65,player.z);
+  camera.rotation.order="YXZ";
+  camera.rotation.y=player.yaw;
+  camera.rotation.x=player.pitch;
+  rake.visible=rakeLevel>0;
+ }else if(!started){
+  camera.position.set(0,5,21);
+  camera.lookAt(0,.5,0);
+ }
+
+ for(let i=activeBombs.length-1;i>=0;i--){
+  const b=activeBombs[i];b.age+=dt;b.velocity.y-=9.8*dt;
+  b.mesh.position.addScaledVector(b.velocity,dt);
+  if(b.mesh.position.y<=.2||b.age>2.3){
+   const x=b.mesh.position.x,z=b.mesh.position.z;
+   scene.remove(b.mesh);
+   const result=removeMany(500*bombLevel,4.5,x,z);
+   makeExplosion(x,.5,z);
+   showCollection(result,"💣 BOMBA");
+   activeBombs.splice(i,1);
+  }
+ }
+ for(let i=explosions.length-1;i>=0;i--){
+  const p=explosions[i];p.age+=dt;
+  p.mesh.scale.setScalar(1+p.age*5);
+  p.mesh.material.opacity=Math.max(0,.7-p.age);
+  if(p.age>.7){scene.remove(p.mesh);explosions.splice(i,1);}
+ }
+
+ if(connection&&connection.open&&started){
+  sendTimer+=dt;
+  if(sendTimer>.1){
+   sendTimer=0;
+   try{connection.send({type:"state",x:player.x,z:player.z,yaw:player.yaw});}catch(e){}
+  }
+ }
+ if(lastMessage&&now>lastMessage){
+  $("message").style.display="none";lastMessage=0;
+ }
+ renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+
+window.addEventListener("resize",()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+})();
+</script>
+</body>
+</html>
